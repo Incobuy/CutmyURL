@@ -2,7 +2,21 @@ require('dotenv').config();
 const { Telegraf, Markup } = require('telegraf');
 const sqlite3 = require('sqlite3').verbose();
 const { nanoid } = require('nanoid');
+const express = require('express');
 
+// Initialize Express to satisfy Render Web Service port binding requirement
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get('/', (req, res) => {
+    res.send('CutmyURL Bot is running live!');
+});
+
+app.listen(PORT, () => {
+    console.log(`Web server is listening on port ${PORT}`);
+});
+
+// Initialize Telegram Bot
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
 const db = new sqlite3.Database('./shortener.db', (err) => {
@@ -55,6 +69,26 @@ bot.action('shorten_link', async (ctx) => {
     await ctx.reply('Please send me the long URL you want to shorten:');
 });
 
+bot.on('text', async (ctx) => {
+    const userId = ctx.from.id.toString();
+    const text = ctx.message.text;
+
+    if (text.startsWith('http://') || text.startsWith('https://')) {
+        const shortCode = nanoid(6);
+
+        db.run(`INSERT INTO links (user_id, short_code, long_url) VALUES (?, ?, ?)`, [userId, shortCode, text], (err) => {
+            if (err) {
+                return ctx.reply('Error saving your short link. Please try again.');
+            }
+            
+            const shortUrl = `https://t.me/${ctx.botInfo.username}?start=${shortCode}`;
+            ctx.reply(`Success! Your short link is:\n${shortUrl}\n\nOriginal URL: ${text}`);
+        });
+    } else {
+        ctx.reply('Please send a valid URL starting with http:// or https://, or use the menu buttons.');
+    }
+});
+
 bot.action('my_stats', async (ctx) => {
     await ctx.answerCbQuery();
     const userId = ctx.from.id.toString();
@@ -77,7 +111,7 @@ bot.action('my_stats', async (ctx) => {
 });
 
 bot.launch().then(() => {
-    console.log('Bot is up and running...');
+    console.log('Telegram Bot is up and running...');
 });
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
